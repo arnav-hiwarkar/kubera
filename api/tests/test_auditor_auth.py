@@ -60,6 +60,10 @@ async def test_auditor_invite_flow_new_account(
     grant = grant_res.scalar_one()
     assert grant.engagement_id == sample_engagement.id
 
+    # Verify engagement status became active
+    await db_session.refresh(sample_engagement)
+    assert sample_engagement.status == "active"
+
 
 @pytest.mark.asyncio
 async def test_auditor_invite_flow_existing_account(

@@ -195,3 +195,115 @@ async def test_debit_credit_validation(
         json=payload
     )
     assert resp.status_code == 200
+
+@pytest.mark.asyncio
+async def test_replace_trial_balance(
+    client: AsyncClient,
+    company_a_setup
+):
+    company, admin, admin_token = company_a_setup
+    
+    # First import
+    csv_content = (
+        "ledger_name,opening_balance,debit,credit,closing_balance\n"
+        "Cash,100,0,0,100\n"
+    )
+    files = {"file": ("tb.csv", csv_content.encode("utf-8"), "text/csv")}
+    resp = await client.post(
+        "/api/v1/auditease/trial-balance/import",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        files=files
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "Imported 1 ledgers"
+    
+    # Verify 1 ledger exists
+    resp = await client.get("/api/v1/auditease/trial-balance", headers={"Authorization": f"Bearer {admin_token}"})
+    assert len(resp.json()) == 1
+    
+    # Replace with 2 ledgers
+    csv_content_2 = (
+        "ledger_name,opening_balance,debit,credit,closing_balance\n"
+        "Bank,200,0,0,200\n"
+        "Accounts Receivable,500,0,0,500\n"
+    )
+    files2 = {"file": ("tb2.csv", csv_content_2.encode("utf-8"), "text/csv")}
+    resp2 = await client.put(
+        "/api/v1/auditease/trial-balance/import",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        files=files2
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["message"] == "Replaced with 2 new ledgers"
+    
+    # Verify exactly 2 ledgers exist
+    resp = await client.get("/api/v1/auditease/trial-balance", headers={"Authorization": f"Bearer {admin_token}"})
+    assert len(resp.json()) == 2
+    names = {l["ledger_name"] for l in resp.json()}
+    assert names == {"Bank", "Accounts Receivable"}
+
+@pytest.mark.asyncio
+async def test_delete_and_list_engagements(
+    client: AsyncClient,
+    company_a_setup
+):
+    company, admin, admin_token = company_a_setup
+    
+    # Create engagement
+    payload = {"period_label": "Delete Me Audit"}
+    resp = await client.post(
+        "/api/v1/auditease/engagements",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json=payload
+    )
+    assert resp.status_code == 200
+    eng_id = resp.json()["id"]
+    
+    # List engagements
+    resp = await client.get("/api/v1/auditease/engagements", headers={"Authorization": f"Bearer {admin_token}"})
+    assert resp.status_code == 200
+    assert len([e for e in resp.json() if e["id"] == eng_id]) == 1
+    
+    # Delete engagement
+    resp = await client.delete(
+        f"/api/v1/auditease/engagements/{eng_id}",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert resp.status_code == 200
+    
+    # Verify deletion
+    resp = await client.get("/api/v1/auditease/engagements", headers={"Authorization": f"Bearer {admin_token}"})
+    assert len([e for e in resp.json() if e["id"] == eng_id]) == 0
+
+@pytest.mark.asyncio
+async def test_auditor_list_engagements(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    company_a_setup,
+    auditor_and_token
+):
+    company, admin, admin_token = company_a_setup
+    auditor, auditor_token = auditor_and_token
+    
+    # Create engagement
+    eng = AuditEngagement(company_id=company.id, period_label="FY2026", status="active")
+    db_session.add(eng)
+    await db_session.commit()
+    await db_session.refresh(eng)
+    
+    # Add grant
+    grant = AuditorEngagementGrant(auditor_id=auditor.id, engagement_id=eng.id)
+    db_session.add(grant)
+    await db_session.commit()
+    
+    # List engagements as auditor
+    resp = await client.get(
+        "/api/v1/auditor/engagements",
+        headers={"Authorization": f"Bearer {auditor_token}"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    
+    assert len(data) == 1
+    assert data[0]["id"] == str(eng.id)
+    assert data[0]["company"]["name"] == company.name

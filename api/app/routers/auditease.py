@@ -77,6 +77,73 @@ async def import_trial_balance(
         "warnings": warnings
     }
 
+@router.put("/trial-balance/import")
+async def replace_trial_balance(
+    file: UploadFile = File(...),
+    company_id: uuid.UUID = Depends(get_tenant_scope),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Replace Trial Balance: Deletes all existing ledgers for this company, then imports the new ones.
+    """
+    await db.execute(Ledger.__table__.delete().where(Ledger.company_id == company_id))
+    await db.commit()
+    
+    # Re-use the same logic by calling the POST handler directly
+    # UploadFile state might need to be reset, but we can just parse it here since it's simple
+    contents = await file.read()
+    
+    mapping = {
+        "ledger_code": "ledger_code",
+        "ledger_name": "ledger_name",
+        "opening_balance": "opening_balance",
+        "debit": "debit",
+        "credit": "credit",
+        "closing_balance": "closing_balance",
+    }
+    
+    try:
+        parsed_data = process_import(contents, file.filename, mapping)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
+
+    warnings = []
+    created_count = 0
+    
+    for row in parsed_data:
+        if not row.get("ledger_name"):
+            continue
+            
+        opening = float(row.get("opening_balance") or 0)
+        debit = float(row.get("debit") or 0)
+        credit = float(row.get("credit") or 0)
+        closing = float(row.get("closing_balance") or 0)
+        
+        expected_closing = opening + debit - credit
+        if abs(expected_closing - closing) > 0.01:
+            warnings.append(
+                f"Ledger '{row.get('ledger_name')}': expected closing {expected_closing}, got {closing}"
+            )
+            
+        ledger = Ledger(
+            company_id=company_id,
+            ledger_code=str(row.get("ledger_code")) if row.get("ledger_code") else None,
+            ledger_name=str(row.get("ledger_name")),
+            opening_balance=opening,
+            debit=debit,
+            credit=credit,
+            closing_balance=closing
+        )
+        db.add(ledger)
+        created_count += 1
+        
+    await db.commit()
+    
+    return {
+        "message": f"Replaced with {created_count} new ledgers",
+        "warnings": warnings
+    }
+
 @router.get("/trial-balance")
 async def get_trial_balance(
     company_id: uuid.UUID = Depends(get_tenant_scope),
@@ -105,8 +172,53 @@ async def map_ledger_group(
 
 
 from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
+
+class AuditorBase(BaseModel):
+    id: uuid.UUID
+    email: str
+    model_config = {"from_attributes": True}
+
+class EngagementResponse(BaseModel):
+    id: uuid.UUID
+    period_label: str
+    status: str
+    auditors: List[AuditorBase] = []
+    model_config = {"from_attributes": True}
+
 class CreateEngagementRequest(BaseModel):
     period_label: str
+
+@router.get("/engagements", response_model=List[EngagementResponse])
+async def list_engagements(
+    company_id: uuid.UUID = Depends(get_tenant_scope),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(AuditEngagement)
+        .options(selectinload(AuditEngagement.auditors))
+        .where(AuditEngagement.company_id == company_id)
+    )
+    return result.scalars().all()
+
+@router.get("/engagements/{engagement_id}", response_model=EngagementResponse)
+async def get_engagement(
+    engagement_id: uuid.UUID,
+    company_id: uuid.UUID = Depends(get_tenant_scope),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(AuditEngagement)
+        .options(selectinload(AuditEngagement.auditors))
+        .where(
+            AuditEngagement.id == engagement_id,
+            AuditEngagement.company_id == company_id
+        )
+    )
+    eng = result.scalar_one_or_none()
+    if not eng:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return eng
 
 @router.post("/engagements")
 async def create_engagement(
@@ -123,6 +235,26 @@ async def create_engagement(
     await db.commit()
     await db.refresh(engagement)
     return engagement
+
+@router.delete("/engagements/{engagement_id}")
+async def delete_engagement(
+    engagement_id: uuid.UUID,
+    company_id: uuid.UUID = Depends(get_tenant_scope),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(AuditEngagement).where(
+            AuditEngagement.id == engagement_id,
+            AuditEngagement.company_id == company_id
+        )
+    )
+    eng = result.scalar_one_or_none()
+    if not eng:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+        
+    await db.delete(eng)
+    await db.commit()
+    return {"message": "Engagement deleted"}
 
 
 class InviteAuditorRequest(BaseModel):

@@ -28,8 +28,8 @@ from app.db.session import get_db
 
 settings = get_settings()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-auditor_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auditor/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", scheme_name="Company_Admin_Auth")
+auditor_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auditor/auth/login", scheme_name="Auditor_Auth")
 
 _CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,

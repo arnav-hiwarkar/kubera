@@ -150,6 +150,15 @@ async def accept_invite(
     )
     db.add(grant)
     
+    # Update engagement status to active
+    from app.db.models.auditease import AuditEngagement
+    eng_result = await db.execute(
+        select(AuditEngagement).where(AuditEngagement.id == invite.engagement_id)
+    )
+    engagement = eng_result.scalar_one_or_none()
+    if engagement and engagement.status == "invited":
+        engagement.status = "active"
+    
     # Consume invite
     await db.delete(invite)
     

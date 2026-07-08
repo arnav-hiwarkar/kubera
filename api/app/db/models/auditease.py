@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TenantScopedMixin
 
@@ -44,6 +44,9 @@ class AuditEngagement(TenantScopedMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    company: Mapped["Company"] = relationship("Company")  # noqa: F821
+    auditors: Mapped[list["Auditor"]] = relationship("Auditor", secondary="auditor_engagement_grant", back_populates="engagements")  # noqa: F821
 
 
 class AuditEntry(TenantScopedMixin, Base):

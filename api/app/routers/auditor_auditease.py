@@ -13,12 +13,48 @@ from app.db.session import get_db
 
 router = APIRouter(prefix="/api/v1/auditor/engagements", tags=["auditease-auditor"])
 
+from sqlalchemy.orm import selectinload
+from app.db.models.auditor import AuditorEngagementGrant
+from datetime import datetime
 
-@router.get("/{engagement_id}")
-async def get_engagement(
-    engagement: AuditEngagement = Depends(get_auditor_engagement_scope)
+class CompanyBase(BaseModel):
+    id: uuid.UUID
+    name: str
+    cin: str
+    model_config = {"from_attributes": True}
+
+class AuditorEngagementResponse(BaseModel):
+    id: uuid.UUID
+    period_label: str
+    status: str
+    created_at: datetime
+    company: CompanyBase
+    model_config = {"from_attributes": True}
+
+@router.get("", response_model=List[AuditorEngagementResponse])
+async def list_engagements(
+    current_auditor: Auditor = Depends(get_current_auditor),
+    db: AsyncSession = Depends(get_db)
 ):
-    return engagement
+    result = await db.execute(
+        select(AuditEngagement)
+        .join(AuditorEngagementGrant, AuditEngagement.id == AuditorEngagementGrant.engagement_id)
+        .options(selectinload(AuditEngagement.company))
+        .where(AuditorEngagementGrant.auditor_id == current_auditor.id)
+    )
+    return result.scalars().all()
+
+@router.get("/{engagement_id}", response_model=AuditorEngagementResponse)
+async def get_engagement(
+    engagement: AuditEngagement = Depends(get_auditor_engagement_scope),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(AuditEngagement)
+        .options(selectinload(AuditEngagement.company))
+        .where(AuditEngagement.id == engagement.id)
+    )
+    return result.scalar_one()
 
 
 @router.get("/{engagement_id}/trial-balance")

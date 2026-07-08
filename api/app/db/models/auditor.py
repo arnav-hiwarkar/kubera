@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -17,6 +17,8 @@ class Auditor(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    engagements: Mapped[list["AuditEngagement"]] = relationship("AuditEngagement", secondary="auditor_engagement_grant", back_populates="auditors")  # noqa: F821
 
 
 class AuditorInvite(Base):

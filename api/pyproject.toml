@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kubera-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi==0.115.5",
+    "uvicorn[standard]==0.32.1",
+
+    # Database — async
+    "sqlalchemy==2.0.36",
+    "asyncpg==0.30.0",
+    "alembic==1.14.0",
+
+    # Auth / security
+    "passlib[bcrypt]==1.7.4",
+    "bcrypt==4.2.1",  # bcrypt>=5 breaks passlib 1.7.4 compatibility
+    "python-jose[cryptography]==3.3.0",
+    "python-multipart==0.0.12",
+
+    # Config
+    "pydantic-settings>=2.6.1",
+    "pydantic[email]>=2.10.3",
+
+    # Celery
+    "celery[redis]==5.4.0",
+]
+
+[project.optional-dependencies]
+alembic = [
+    # Sync driver used by Alembic inside Docker against Postgres
+    "psycopg2-binary==2.9.10",
+]
+test = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "httpx==0.27.2",
+    "aiosqlite==0.20.0",
+    # For SQLite async tests
+    "greenlet>=3.1.1",  # latest pre-release for Python 3.14 compatibility
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "scripts*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

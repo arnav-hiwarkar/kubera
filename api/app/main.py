@@ -3,7 +3,7 @@ Kubera FastAPI application entry point.
 """
 from fastapi import FastAPI
 
-from app.routers import auth, internal
+from app.routers import auth, internal, docvault
 
 app = FastAPI(
     title="Kubera API",
@@ -19,6 +19,7 @@ app = FastAPI(
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
 app.include_router(internal.router)
+app.include_router(docvault.router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # ── App ───────────────────────────────────────────────────────────────
     app_env: str = "development"
 
+    # ── DocVault ──────────────────────────────────────────────────────────
+    vault_kek: str
+    vault_storage_path: str = "/data/vault"
+    backup_destination_path: str = "/data/backup"
+
 
 @lru_cache
 def get_settings() -> Settings:

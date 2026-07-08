@@ -7,6 +7,7 @@ dependency for running the test suite.
 The tenant-scope test needs a "dummy" TenantScoped table. We define
 it here as a test-only model and create it alongside the main tables.
 """
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -15,11 +16,19 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import String, select
+
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 from app.core.security import create_access_token, hash_password
@@ -29,12 +38,13 @@ from app.db.models.company_admin import CompanyAdmin
 from app.db.session import get_db
 from app.main import app
 
-# ── SQLite test engine ────────────────────────────────────────────────────────
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# ── Postgres test engine ──────────────────────────────────────────────────────
+TEST_DATABASE_URL = "postgresql+asyncpg://kubera:kubera@postgres:5432/kubera_test"
 
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    echo=False,
+    poolclass=NullPool,
 )
 
 TestSessionLocal = async_sessionmaker(
@@ -145,3 +155,13 @@ async def create_company_and_admin(
 @pytest.fixture
 def internal_key() -> str:
     return get_settings().internal_api_key
+
+
+@pytest_asyncio.fixture
+async def company_a_setup(db_session: AsyncSession):
+    uid = str(uuid.uuid4())[:5]
+    company, admin = await create_company_and_admin(
+        db_session, cin=f"U{uid}MH2020PTC000001", email=f"admin_a_{uid}@co.com", password="pass"
+    )
+    token = create_access_token(str(admin.id), str(company.id))
+    return company, admin, token

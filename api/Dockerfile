@@ -11,7 +11,7 @@ WORKDIR /app
 # Install Python deps first (cache layer)
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir ".[alembic]"
+    && pip install --no-cache-dir ".[alembic,test]"
 
 # Copy source
 COPY . .

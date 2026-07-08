@@ -24,6 +24,7 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 PRINCIPAL_TYPE_COMPANY_ADMIN = "company_admin"
+PRINCIPAL_TYPE_AUDITOR = "auditor"
 
 
 # ── Password hashing ──────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ def verify_password(plain: str, hashed: str) -> bool:
     return _pwd_context.verify(plain, hashed)
 
 
-# ── JWT ───────────────────────────────────────────────────────────────────────
+# ── JWT (Company Admin) ───────────────────────────────────────────────────────
 
 def create_access_token(admin_id: str, company_id: str) -> str:
     """
@@ -101,3 +102,54 @@ def decode_refresh_token(token: str) -> dict:
     if payload.get("principal_type") != PRINCIPAL_TYPE_COMPANY_ADMIN:
         raise JWTError("Wrong principal type")
     return payload
+
+
+# ── JWT (Auditor) ─────────────────────────────────────────────────────────────
+
+def create_auditor_access_token(auditor_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
+    payload = {
+        "sub": auditor_id,
+        "principal_type": PRINCIPAL_TYPE_AUDITOR,
+        "type": TOKEN_TYPE_ACCESS,
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.auditor_secret_key, algorithm=settings.algorithm)
+
+
+def create_auditor_refresh_token(auditor_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(
+        days=settings.refresh_token_expire_days
+    )
+    payload = {
+        "sub": auditor_id,
+        "principal_type": PRINCIPAL_TYPE_AUDITOR,
+        "type": TOKEN_TYPE_REFRESH,
+        "exp": expire,
+    }
+    return jwt.encode(
+        payload, settings.auditor_refresh_secret_key, algorithm=settings.algorithm
+    )
+
+
+def decode_auditor_access_token(token: str) -> dict:
+    payload = jwt.decode(token, settings.auditor_secret_key, algorithms=[settings.algorithm])
+    if payload.get("type") != TOKEN_TYPE_ACCESS:
+        raise JWTError("Not an access token")
+    if payload.get("principal_type") != PRINCIPAL_TYPE_AUDITOR:
+        raise JWTError("Wrong principal type")
+    return payload
+
+
+def decode_auditor_refresh_token(token: str) -> dict:
+    payload = jwt.decode(
+        token, settings.auditor_refresh_secret_key, algorithms=[settings.algorithm]
+    )
+    if payload.get("type") != TOKEN_TYPE_REFRESH:
+        raise JWTError("Not a refresh token")
+    if payload.get("principal_type") != PRINCIPAL_TYPE_AUDITOR:
+        raise JWTError("Wrong principal type")
+    return payload
+

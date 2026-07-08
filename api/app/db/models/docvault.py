@@ -38,7 +38,7 @@ class Document(TenantScopedMixin, Base):
     __tablename__ = "document"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    current_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_version.id", use_alter=True), nullable=True)
+    current_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("document_version.id", use_alter=True, name="fk_doc_current_version"), nullable=True)
     bucket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bucket.id"), nullable=True)
     status: Mapped[DocumentStatus] = mapped_column(Enum(DocumentStatus, name="document_status_enum"), default=DocumentStatus.uploaded, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)

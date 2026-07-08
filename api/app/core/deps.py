@@ -13,20 +13,23 @@ CRITICAL INVARIANT:
 """
 import uuid
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, Path, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, decode_auditor_access_token
 from app.db.models.company_admin import CompanyAdmin
+from app.db.models.auditor import Auditor, AuditorEngagementGrant
+from app.db.models.auditease import AuditEngagement
 from app.db.session import get_db
 
 settings = get_settings()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+auditor_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auditor/auth/login")
 
 _CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -98,3 +101,56 @@ async def require_internal_key(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid internal API key",
         )
+
+
+async def get_current_auditor(
+    token: str = Depends(auditor_oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Auditor:
+    try:
+        payload = decode_auditor_access_token(token)
+        auditor_id: str | None = payload.get("sub")
+        if auditor_id is None:
+            raise _CREDENTIALS_EXCEPTION
+    except JWTError:
+        raise _CREDENTIALS_EXCEPTION
+
+    result = await db.execute(
+        select(Auditor).where(Auditor.id == uuid.UUID(auditor_id))
+    )
+    auditor = result.scalar_one_or_none()
+    if auditor is None or not auditor.is_active:
+        raise _CREDENTIALS_EXCEPTION
+
+    return auditor
+
+
+async def get_auditor_engagement_scope(
+    engagement_id: uuid.UUID = Path(..., description="The engagement ID"),
+    current_auditor: Auditor = Depends(get_current_auditor),
+    db: AsyncSession = Depends(get_db),
+) -> AuditEngagement:
+    grant_result = await db.execute(
+        select(AuditorEngagementGrant).where(
+            AuditorEngagementGrant.auditor_id == current_auditor.id,
+            AuditorEngagementGrant.engagement_id == engagement_id
+        )
+    )
+    if grant_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this engagement",
+        )
+    
+    eng_result = await db.execute(
+        select(AuditEngagement).where(AuditEngagement.id == engagement_id)
+    )
+    engagement = eng_result.scalar_one_or_none()
+    
+    if not engagement or engagement.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This engagement is not active or does not exist",
+        )
+        
+    return engagement

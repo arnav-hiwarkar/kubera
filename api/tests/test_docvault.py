@@ -9,7 +9,7 @@ from tests.conftest import create_company_and_admin
 
 @pytest.fixture
 async def company_a_setup(db_session: AsyncSession):
-    uid = str(uuid.uuid4())[:8]
+    uid = str(uuid.uuid4())[:5]
     company, admin = await create_company_and_admin(
         db_session, cin=f"U{uid}MH2020PTC000001", email=f"admin_a_{uid}@co.com", password="pass"
     )
@@ -18,7 +18,7 @@ async def company_a_setup(db_session: AsyncSession):
 
 @pytest.fixture
 async def company_b_setup(db_session: AsyncSession):
-    uid = str(uuid.uuid4())[:8]
+    uid = str(uuid.uuid4())[:5]
     company, admin = await create_company_and_admin(
         db_session, cin=f"U{uid}MH2020PTC000002", email=f"admin_b_{uid}@co.com", password="pass"
     )
